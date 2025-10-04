@@ -54,6 +54,14 @@ interface Extension {
   icon: string;
 }
 
+interface SearchResult {
+  id: number;
+  title: string;
+  url: string;
+  description: string;
+  isSecure: boolean;
+}
+
 const Index = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [tabs, setTabs] = useState<Tab[]>([
@@ -78,6 +86,9 @@ const Index = () => {
   ]);
   const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showHomePage, setShowHomePage] = useState(true);
 
   const menuItems: MenuItem[] = [
     { id: 'extensions', label: 'Расширения', icon: 'Puzzle' },
@@ -143,9 +154,59 @@ const Index = () => {
     };
   };
 
+  const performSearch = (query: string) => {
+    const mockResults: SearchResult[] = [
+      {
+        id: 1,
+        title: `Результаты поиска: ${query}`,
+        url: `https://google.com/search?q=${encodeURIComponent(query)}`,
+        description: `Поиск в Google по запросу "${query}"`,
+        isSecure: true
+      },
+      {
+        id: 2,
+        title: `${query} - Википедия`,
+        url: `https://ru.wikipedia.org/wiki/${encodeURIComponent(query)}`,
+        description: `Статья в Википедии о ${query}`,
+        isSecure: true
+      },
+      {
+        id: 3,
+        title: `${query} видео`,
+        url: `https://youtube.com/results?search_query=${encodeURIComponent(query)}`,
+        description: `Видео на YouTube по запросу "${query}"`,
+        isSecure: true
+      },
+      {
+        id: 4,
+        title: `${query} - новости`,
+        url: `https://news.google.com/search?q=${encodeURIComponent(query)}`,
+        description: `Актуальные новости о ${query}`,
+        isSecure: true
+      },
+      {
+        id: 5,
+        title: `Изображения ${query}`,
+        url: `https://google.com/search?q=${encodeURIComponent(query)}&tbm=isch`,
+        description: `Картинки и фото по запросу "${query}"`,
+        isSecure: true
+      }
+    ];
+    setSearchResults(mockResults);
+    setIsSearching(true);
+    setShowHomePage(false);
+  };
+
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUrl.trim()) return;
+
+    const isUrl = currentUrl.includes('.') || currentUrl.startsWith('http');
+    
+    if (!isUrl) {
+      performSearch(currentUrl);
+      return;
+    }
 
     const safety = checkUrlSafety(currentUrl);
     const updatedTabs = tabs.map(tab => 
@@ -166,6 +227,8 @@ const Index = () => {
 
     setNavigationHistory([...navigationHistory.slice(0, historyIndex + 1), currentUrl]);
     setHistoryIndex(historyIndex + 1);
+    setIsSearching(false);
+    setShowHomePage(false);
   };
 
   const goBack = () => {
@@ -191,6 +254,40 @@ const Index = () => {
       );
       setTabs(updatedTabs);
     }
+  };
+
+  const goHome = () => {
+    setCurrentUrl('');
+    setIsSearching(false);
+    setShowHomePage(true);
+    setSearchResults([]);
+    const updatedTabs = tabs.map(tab => 
+      tab.id === activeTab 
+        ? { ...tab, url: '', title: 'Новая вкладка' }
+        : tab
+    );
+    setTabs(updatedTabs);
+  };
+
+  const openSearchResult = (result: SearchResult) => {
+    setCurrentUrl(result.url);
+    const updatedTabs = tabs.map(tab => 
+      tab.id === activeTab 
+        ? { ...tab, url: result.url, isSecure: result.isSecure, title: result.title }
+        : tab
+    );
+    setTabs(updatedTabs);
+    
+    const newHistoryItem: HistoryItem = {
+      id: Date.now(),
+      url: result.url,
+      title: result.title,
+      timestamp: new Date(),
+      isSecure: result.isSecure
+    };
+    setHistory([newHistoryItem, ...history]);
+    setIsSearching(false);
+    setShowHomePage(false);
   };
 
   const addBookmark = () => {
@@ -495,6 +592,15 @@ const Index = () => {
             <Button 
               variant="ghost" 
               size="icon"
+              onClick={goHome}
+              title="Домой"
+            >
+              <Icon name="Home" size={20} />
+            </Button>
+            
+            <Button 
+              variant="ghost" 
+              size="icon"
               onClick={goBack}
               disabled={historyIndex <= 0}
             >
@@ -595,14 +701,69 @@ const Index = () => {
           {activeSection !== 'extensions' && activeSection !== 'settings' && 
            activeSection !== 'history' && activeSection !== 'bookmarks' && 
            activeSection !== 'downloads' && activeSection !== 'profile' ? (
-            !currentUrl ? (
+            isSearching ? (
+              <div className="p-8">
+                <div className="max-w-4xl mx-auto">
+                  <h2 className="text-2xl font-bold mb-6">Результаты поиска</h2>
+                  <div className="space-y-4">
+                    {searchResults.map((result) => (
+                      <Card 
+                        key={result.id} 
+                        className="p-6 cursor-pointer hover:shadow-lg transition-shadow"
+                        onClick={() => openSearchResult(result)}
+                      >
+                        <div className="flex items-start gap-3">
+                          {result.isSecure ? (
+                            <Icon name="Lock" size={16} className="text-green-600 mt-1" />
+                          ) : (
+                            <Icon name="ShieldAlert" size={16} className="text-destructive mt-1" />
+                          )}
+                          <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-primary hover:underline mb-1">
+                              {result.title}
+                            </h3>
+                            <p className="text-sm text-green-700 mb-2">{result.url}</p>
+                            <p className="text-sm text-muted-foreground">{result.description}</p>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : showHomePage && !currentUrl ? (
               <div className="h-full flex items-center justify-center">
-                <div className="text-center max-w-2xl px-4">
+                <div className="text-center max-w-4xl px-4">
                   <Icon name="Shield" size={64} className="mx-auto mb-6 text-primary" />
                   <h2 className="text-3xl font-bold mb-4">Добро пожаловать в SecureBrowser</h2>
                   <p className="text-muted-foreground mb-8">
                     Браузер с усиленной защитой от вредоносных сайтов
                   </p>
+
+                  <div className="mb-12">
+                    <h3 className="text-lg font-semibold mb-4">Популярные сайты</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {bookmarks.map((bookmark) => (
+                        <Card 
+                          key={bookmark.id}
+                          className="p-4 cursor-pointer hover:shadow-lg transition-shadow"
+                          onClick={() => {
+                            setCurrentUrl(bookmark.url);
+                            const updatedTabs = tabs.map(tab => 
+                              tab.id === activeTab 
+                                ? { ...tab, url: bookmark.url, title: bookmark.title, isSecure: true }
+                                : tab
+                            );
+                            setTabs(updatedTabs);
+                            setShowHomePage(false);
+                          }}
+                        >
+                          <Icon name="Globe" size={32} className="mx-auto mb-2 text-primary" />
+                          <p className="text-sm font-medium">{bookmark.title}</p>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
                     <Card className="p-6 text-left">
